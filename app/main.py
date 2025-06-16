@@ -11,8 +11,8 @@ app.include_router(users.router)
 app.include_router(items.router)
 
 origins = [
-    "http://localhost:8080",  # URL do seu frontend Vue
-    "http://127.0.0.1:8080",  # Adicione esta linha caso precise
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
 ]
 
 # Configuração do Middleware CORS
@@ -26,4 +26,4 @@ app.add_middleware(
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, port=8000)
+    uvicorn.run(app,host="0.0.0.0", port=8000)

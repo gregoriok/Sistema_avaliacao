@@ -7,7 +7,9 @@ from uuid import UUID
 from fastapi.responses import StreamingResponse
 from io import BytesIO
 from app.utils import  *
-from app.schemas import RateRequest,getRateRequest
+from app.schemas import RateRequest,getRateRequest,SendEmailRequest
+import secrets
+import string
 router = APIRouter()
 
 @router.post("/api/images/upload/")
@@ -18,17 +20,17 @@ async def upload_image(user_id: UUID,
     db: Session = Depends(get_db)
 ):
     if image.content_type not in ["image/jpeg", "image/jpg"]:
-        return HTTPException(status_code=400, detail="O arquivo deve ser uma imagem JPG ou JPEG")
+        raise HTTPException(status_code=400, detail="O arquivo deve ser uma imagem JPG ou JPEG")
 
     if len(await image.read()) > MAX_FILE_SIZE:
-        return HTTPException(status_code=400, detail="O arquivo deve ter no máximo 10MB")
+        raise HTTPException(status_code=400, detail="O arquivo deve ter no máximo 10MB")
 
     if subcategory not in MAX_UPLOADS:
-        return HTTPException(status_code=400, detail="Categoria inválida.")
+        raise HTTPException(status_code=400, detail="Categoria inválida.")
 
     uploads = crud.get_images_by_user(db=db, user_id=user_id,subcategory=subcategory)
     if len(uploads) >= MAX_UPLOADS[subcategory]:
-        return HTTPException(
+        raise HTTPException(
             status_code=400,
             detail=f"Você atingiu o limite de {MAX_UPLOADS[subcategory]} imagens para a categoria {subcategory}."
         )
@@ -44,7 +46,7 @@ async def upload_image(user_id: UUID,
     )
     db_image = crud.upload_image(db=db, image=image_data)
     if not db_image:
-        return HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Erro ao salvar a imagem")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Erro ao salvar a imagem")
 
     return {"message": "Imagem carregada com sucesso"}
 
@@ -66,7 +68,7 @@ def delete_image(image_id: UUID, db: Session = Depends(get_db)):
     db_image = crud.delete_image(db=db, image_id=image_id)
 
     if db_image is None:
-        return HTTPException(status_code=404, detail="Imagem não encontrada")
+        raise HTTPException(status_code=404, detail="Imagem não encontrada")
 
     return {"sucess": True, "message": "Imagem deletada com sucesso"}
 
@@ -89,7 +91,7 @@ async def get_image_by_user(user_id: UUID, subcategory: Optional[str] = None, db
     db_images = crud.get_images_by_user(db=db, user_id=user_id, subcategory=subcategory)
 
     if not db_images:
-        return HTTPException(status_code=404, detail="Nenhuma imagem encontrada para este usuário")
+        raise HTTPException(status_code=404, detail="Nenhuma imagem encontrada para este usuário")
 
     # Retorna uma lista de IDs das imagens
     image_ids = [{"image_id": str(image.id)} for image in db_images]
@@ -111,17 +113,78 @@ async def get_image_details(image_id: UUID, db: Session = Depends(get_db)):
         "subcategory": db_image.subcategory,
     }
 
-@router.post("/api/images/{image_id}/rate/")
-async def rate_image(rate_request: RateRequest,db: Session = Depends(get_db)):
-
-    db_rating = crud.set_image_rating(db=db,image_id=rate_request.image_id,rating=rate_request.rating,user_id=rate_request.user_id)
+@router.post("/api/users/{user_id}/rate/")
+async def rate_user(rate_request: RateRequest, db: Session = Depends(get_db)):
+    db_rating = crud.set_user_rating(
+        db=db,
+        evaluated_user_id=rate_request.evaluated_user_id,
+        rating=rate_request.rating,
+        evaluator_id=rate_request.evaluator_id,
+        category=rate_request.category
+    )
     if not db_rating:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Erro ao atribuir a nota para a Imagem")
-
-    return {"message": "Nota atribuída com sucesso."}
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Erro ao atribuir a nota para o usuario"
+        )
+    return {"message": "Nota atribuida com sucesso."}
 
 @router.post("/api/images/rate/")
 def get_image_rate_by_category(rate_request: getRateRequest, db: Session = Depends(get_db)):
 
-    rating = crud.get_image_rating(db=db, user_id=rate_request.user_id, subcategory=rate_request.subcategory)
+    rating = crud.get_image_rating(db=db, user_id=rate_request.user_id, category=rate_request.category)
     return {"rating": rating}
+
+@router.post("/api/invite")
+def send_mail(EmailRequest: SendEmailRequest, db: Session = Depends(get_db)):
+    user_email = EmailRequest.email
+    user_name = EmailRequest.name
+    user = crud.get_user_by_email(db, email=user_email)
+    if user:
+        raise HTTPException(status_code=400, detail="Usuário já cadastrado.")
+
+    password = generate_random_password()
+
+    user_data = schemas.UserCreate(
+        name=user_name,
+        email=user_email,
+        password=password,
+        user_type='A',
+        document='',
+        category='4'
+    )
+
+    crud.create_user(db=db, user=user_data)
+
+    email_content = f"Olá, você foi cadastrado como avaliador, acesse usando seu e-mail e sua nova senha : {password}"
+    send_email(user_email, "Novo cadastro como Avaliador", email_content)
+
+    return {"message": "Convite enviado com sucesso!"}
+
+
+def send_email(to_email: str, subject: str, content: str):
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+
+    from_email = "gregoriosteinke@gmail.com"
+    password = "zbgg djan hziq gszi"
+
+    msg = MIMEMultipart()
+    msg["From"] = from_email
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.attach(MIMEText(content, "plain"))
+
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.starttls()
+            server.login(from_email, password)
+            server.sendmail(from_email, to_email, msg.as_string())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Erro ao enviar email: " + str(e))
+
+def generate_random_password(length=12):
+    characters = string.ascii_letters + string.digits + string.punctuation
+    password = ''.join(secrets.choice(characters) for _ in range(length))
+    return password

@@ -5,7 +5,7 @@ from .database import Base
 import uuid
 import datetime
 from sqlalchemy.dialects.postgresql import UUID
-
+import sqlalchemy as sa
 # Users Table
 class User(Base):
     __tablename__ = "users"
@@ -19,7 +19,6 @@ class User(Base):
     password = Column(String)
     category = Column(String, index=True)
     images = relationship("Image", back_populates="user")
-    ratings = relationship("ImageRating", back_populates="evaluator")
 
 # Images Table
 class Image(Base):
@@ -32,19 +31,15 @@ class Image(Base):
     description = Column(String(500))
 
     user = relationship("User", back_populates="images")
-    ratings = relationship("ImageRating", back_populates="image")
 
 # Image Ratings Table
 class ImageRating(Base):
-    __tablename__ = "image_ratings"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    evaluator_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-    image_id = Column(UUID(as_uuid=True), ForeignKey("images.id"))
-    rating = Column(Integer)
-
-    evaluator = relationship("User", back_populates="ratings")
-    image = relationship("Image", back_populates="ratings")
+    __tablename__ = 'image_ratings'
+    id = sa.Column(sa.String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    evaluator_id = sa.Column(sa.String, nullable=False)
+    evaluated_user_id = sa.Column(sa.String, nullable=False)
+    category = sa.Column(sa.String(1), nullable=False)
+    rating = sa.Column(sa.Integer, nullable=False)
 
 class Token(Base):
     __tablename__ = "tokens"

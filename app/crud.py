@@ -6,16 +6,19 @@ from typing import List, Optional
 from app.utils import *
 from uuid import UUID
 from fastapi import UploadFile
+import logging
+from .models import ImageRating
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
+def create_user(db: Session, user: schemas.UserCreate, file_content: bytes = None):
+    if user.document or user.email:
+        db_user_existing = db.query(models.User).filter(
+            (models.User.email == user.email) | (models.User.document == user.document)
+        ).first()
 
-
-def create_user(db: Session, user: schemas.UserCreate, file_content: bytes):
-    db_user_existing = db.query(models.User).filter(
-        (models.User.email == user.email) | (models.User.document == user.document)
-    ).first()
-
-    if db_user_existing:
-        return None
+        if db_user_existing:
+            return None
 
     hashed_password = hash_password(user.password)
     db_user = models.User(name=user.name,
@@ -37,13 +40,22 @@ def get_users(db: Session, skip: int = 0, limit: int = 10) -> List[models.User]:
     return db.query(models.User).offset(skip).limit(limit).all()
 
 def update_user(db: Session, user_id: UUID, user: schemas.UserUpdate):
+    logger.debug(f"Received user update request: {user}")
     db_user = db.query(models.User).filter(models.User.id == user_id).first()
     if db_user:
-        db_user.name = user.name
-        db_user.document = user.document
-        db_user.email = user.email
-        db_user.user_type = user.user_type
-        db_user.file = user.file
+        if 'name' in user:
+            db_user.name = user['name']
+        if 'document' in user:
+            db_user.document = user['document']
+        if 'email' in user:
+            db_user.email = user['email']
+        if 'user_type' in user:
+            db_user.user_type = user['user_type']
+        if 'file' in user:
+            db_user.file = user['file']
+        if 'password' in user:
+            hashed_password = hash_password(user['password'])
+            db_user.password = hashed_password
         db.commit()
         db.refresh(db_user)
     return db_user
@@ -128,37 +140,34 @@ def get_images_by_user(db: Session, user_id: UUID, subcategory: Optional[str] = 
     return query.all()
 
 
-def set_image_rating(db:Session, image_id: UUID, rating: int, user_id: UUID):
-    user_data = get_user_by_id(db=db, user_id=user_id)
+def set_user_rating(db: Session, evaluated_user_id: UUID, rating: int, evaluator_id: UUID, category: str):
+    user_data = get_user_by_id(db=db, user_id=evaluator_id)
     if user_data.user_type != 'A':
-        raise HTTPException(status_code=500, detail="Apenas usuario avaliador pode dar notas")
+        raise HTTPException(status_code=403, detail="Apenas usuario avaliador pode dar notas.")
 
-    if not (0 <= rating <= 10):
-        raise HTTPException(status_code=400, detail="Nota deve ser entre 0 e 10.")
+    if not (0 <= rating <= 20):
+        raise HTTPException(status_code=400, detail="Nota deve ser entre 0 e 20.")
 
-    db_image = get_image_by_id(db, image_id)
-    if not db_image:
-        raise HTTPException(status_code=404, detail="Imagem não encontrada.")
+    evaluated_user = get_user_by_id(db, evaluated_user_id)
+    if not evaluated_user:
+        raise HTTPException(status_code=404, detail="Usuario avaliado nao encontrado.")
 
-    db_image_rating = models.ImageRating(
-        evaluator_id=user_id, image_id=image_id, rating=rating
+    image_rating_data = get_image_rating()
+
+    db_user_rating = ImageRating(
+        evaluator_id=str(evaluator_id),
+        evaluated_user_id=str(evaluated_user_id),
+        category=category,
+        rating=rating
     )
-    db.add(db_image_rating)
+    db.add(db_user_rating)
     db.commit()
-    db.refresh(db_image_rating)
-    return db_image_rating
+    db.refresh(db_user_rating)
+    return db_user_rating
 
-def get_image_rating(db:Session,user_id:UUID,subcategory:str):
-    rating: int = 0
-    image_count: int = 0
-    db_image_set = get_images_by_user(db=db, user_id=user_id, subcategory=subcategory)
-    if not db_image_set:
-        return 0
-    for image in db_image_set:
-        image_rating = db.query(models.ImageRating).filter(image.id == models.ImageRating.image_id).first()
-        if not image_rating:
-            return 0
-        rating += image_rating.rating
-        image_count += 1
+def get_image_rating(db:Session,user_id:str,category:str):
+    image_rating = db.query(models.ImageRating).filter(models.ImageRating.evaluated_user_id == user_id and models.ImageRating.category == category).first()
+    return image_rating.rating
 
-    return rating / image_count
+def get_user_by_email(db: Session, email: str):
+    return db.query(models.User).filter(models.User.email == email).first()

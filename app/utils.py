@@ -29,20 +29,15 @@ def create_access_token(data: dict, expires_delta: timedelta = timedelta(days=5)
     return encoded_jwt
 
 def verify_token_expiration(token: str):
-    print(token)
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], leeway=10)
-        print('passou payload')
         expiration_date = datetime.fromtimestamp(payload["exp"])
-        print(expiration_date)
         if expiration_date < datetime.utcnow():
-            return HTTPException(status_code=401, detail="Token expirado")
+            raise HTTPException(status_code=401, detail="Token expirado")
         return payload
     except jwt.ExpiredSignatureError:
-        print('token1')
         raise HTTPException(status_code=401, detail="Token expirado")
     except jwt.PyJWTError as e:
-        print(f"Erro ao decodificar o token: {e}")  # Exibe o erro específico
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token inválido",
