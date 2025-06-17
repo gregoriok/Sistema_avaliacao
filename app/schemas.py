@@ -4,6 +4,7 @@ from datetime import datetime
 from uuid import UUID
 from fastapi import UploadFile, File
 from enum import Enum
+from typing import List
 # Pydantic schemas for validation
 
 class CategoryEnum(str, Enum):
@@ -18,7 +19,7 @@ class getRateRequest(BaseModel):
 
 class RateRequest(BaseModel):
     evaluated_user_id: UUID
-    rating: int
+    rating: List[int]
     category: str
     evaluator_id: UUID
 

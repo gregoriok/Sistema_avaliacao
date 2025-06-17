@@ -140,30 +140,37 @@ def get_images_by_user(db: Session, user_id: UUID, subcategory: Optional[str] = 
     return query.all()
 
 
-def set_user_rating(db: Session, evaluated_user_id: UUID, rating: int, evaluator_id: UUID, category: str):
+def set_user_rating(db: Session, evaluated_user_id: UUID,  ratings: List[int], evaluator_id: UUID, category: str):
     user_data = get_user_by_id(db=db, user_id=evaluator_id)
     if user_data.user_type != 'A':
-        raise HTTPException(status_code=403, detail="Apenas usuario avaliador pode dar notas.")
+        raise HTTPException(status_code=403, detail="Apenas usuário avaliador pode dar notas.")
 
-    if not (0 <= rating <= 20):
-        raise HTTPException(status_code=400, detail="Nota deve ser entre 0 e 20.")
-
-    evaluated_user = get_user_by_id(db, evaluated_user_id)
+    evaluated_user = get_user_by_id(db=db, user_id=evaluated_user_id)
     if not evaluated_user:
-        raise HTTPException(status_code=404, detail="Usuario avaliado nao encontrado.")
+        raise HTTPException(status_code=404, detail="Usuário avaliado não encontrado.")
 
-    image_rating_data = get_image_rating()
-
-    db_user_rating = ImageRating(
+    existing_ratings = db.query(ImageRating).filter_by(
         evaluator_id=str(evaluator_id),
         evaluated_user_id=str(evaluated_user_id),
-        category=category,
-        rating=rating
-    )
-    db.add(db_user_rating)
+        category=category
+    ).count()
+
+    if existing_ratings >= 5:
+        raise HTTPException(
+            status_code=400,
+            detail="Este usuário já foi avaliado com 5 notas nesta categoria."
+        )
+
+    for rating in ratings:
+        db_rating = ImageRating(
+            evaluator_id=str(evaluator_id),
+            evaluated_user_id=str(evaluated_user_id),
+            category=category,
+            rating=rating
+        )
+        db.add(db_rating)
     db.commit()
-    db.refresh(db_user_rating)
-    return db_user_rating
+    return True
 
 def get_image_rating(db:Session,user_id:str,category:str):
     image_rating = db.query(models.ImageRating).filter(models.ImageRating.evaluated_user_id == user_id and models.ImageRating.category == category).first()
@@ -171,3 +178,32 @@ def get_image_rating(db:Session,user_id:str,category:str):
 
 def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
+
+def overwrite_user_ratings(db: Session, evaluated_user_id: UUID, ratings: List[int], evaluator_id: UUID, category: str):
+    user_data = get_user_by_id(db=db, user_id=evaluator_id)
+    if user_data.user_type != 'A':
+        raise HTTPException(status_code=403, detail="Apenas usuário avaliador pode dar notas.")
+
+    evaluated_user = get_user_by_id(db=db, user_id=evaluated_user_id)
+    if not evaluated_user:
+        raise HTTPException(status_code=404, detail="Usuário avaliado não encontrado.")
+
+    # Apagar notas anteriores
+    db.query(ImageRating).filter_by(
+        evaluator_id=str(evaluator_id),
+        evaluated_user_id=str(evaluated_user_id),
+        category=category
+    ).delete()
+
+    # Inserir novas notas
+    for score in ratings:
+        db_rating = ImageRating(
+            evaluator_id=str(evaluator_id),
+            evaluated_user_id=str(evaluated_user_id),
+            category=category,
+            rating=score
+        )
+        db.add(db_rating)
+
+    db.commit()
+    return True

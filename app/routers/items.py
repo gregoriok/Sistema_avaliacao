@@ -74,7 +74,7 @@ def delete_image(image_id: UUID, db: Session = Depends(get_db)):
 
 @router.put("/api/images/{image_id}")
 async def update_image(
-        image_id: UUID,  # O ID vem diretamente da URL
+        image_id: UUID,
         new_image: Optional[UploadFile] = File(None),
         description: Optional[str] = Form(None),
         db: Session = Depends(get_db)
@@ -115,19 +115,66 @@ async def get_image_details(image_id: UUID, db: Session = Depends(get_db)):
 
 @router.post("/api/users/{user_id}/rate/")
 async def rate_user(rate_request: RateRequest, db: Session = Depends(get_db)):
-    db_rating = crud.set_user_rating(
-        db=db,
-        evaluated_user_id=rate_request.evaluated_user_id,
-        rating=rate_request.rating,
-        evaluator_id=rate_request.evaluator_id,
-        category=rate_request.category
-    )
-    if not db_rating:
+
+    if len(rate_request.ratings) != 5:
+        raise HTTPException(
+            status_code=400,
+            detail="Devem ser fornecidas exatamente 5 notas."
+        )
+    if not all(0 <= r <= 20 for r in rate_request.ratings):
+        raise HTTPException(
+            status_code=400,
+            detail="Todas as notas devem estar entre 0 e 20."
+        )
+    try:
+        crud.set_user_rating(
+            db=db,
+            evaluated_user_id=rate_request.evaluated_user_id,
+            ratings=rate_request.ratings,
+            evaluator_id=rate_request.evaluator_id,
+            category=rate_request.category
+        )
+    except HTTPException as e:
+        raise e
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Erro ao atribuir a nota para o usuario"
+            detail="Erro ao atribuir as notas."
         )
-    return {"message": "Nota atribuida com sucesso."}
+
+    return {"message": "Notas atribuídas com sucesso."}
+
+@router.put("/rate/overwrite")
+async def overwrite_user_ratings(rate_request: RateRequest, db: Session = Depends(get_db)):
+    if len(rate_request.ratings) != 5:
+        raise HTTPException(
+            status_code=400,
+            detail="Você deve fornecer exatamente 5 notas."
+        )
+
+    if not all(0 <= r <= 20 for r in rate_request.ratings):
+        raise HTTPException(
+            status_code=400,
+            detail="Todas as notas devem estar entre 0 e 20."
+        )
+
+    try:
+        crud.overwrite_user_ratings(
+            db=db,
+            evaluated_user_id=rate_request.evaluated_user_id,
+            ratings=rate_request.ratings,
+            evaluator_id=rate_request.evaluator_id,
+            category=rate_request.category
+        )
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao sobrescrever as notas: {str(e)}"
+        )
+
+    return {"message": "Notas sobrescritas com sucesso."}
 
 @router.post("/api/images/rate/")
 def get_image_rate_by_category(rate_request: getRateRequest, db: Session = Depends(get_db)):
