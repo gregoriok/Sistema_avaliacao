@@ -8,6 +8,8 @@ from uuid import UUID
 from fastapi import UploadFile
 import logging
 from .models import ImageRating
+from app.schemas import RatingItem
+from sqlalchemy import and_
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
@@ -140,7 +142,13 @@ def get_images_by_user(db: Session, user_id: UUID, subcategory: Optional[str] = 
     return query.all()
 
 
-def set_user_rating(db: Session, evaluated_user_id: UUID,  ratings: List[int], evaluator_id: UUID, category: str):
+def set_user_rating(
+    db: Session,
+    evaluated_user_id: UUID,
+    ratings: List[RatingItem],
+    evaluator_id: UUID,
+    category: str
+):
     user_data = get_user_by_id(db=db, user_id=evaluator_id)
     if user_data.user_type != 'A':
         raise HTTPException(status_code=403, detail="Apenas usuário avaliador pode dar notas.")
@@ -149,61 +157,43 @@ def set_user_rating(db: Session, evaluated_user_id: UUID,  ratings: List[int], e
     if not evaluated_user:
         raise HTTPException(status_code=404, detail="Usuário avaliado não encontrado.")
 
-    existing_ratings = db.query(ImageRating).filter_by(
-        evaluator_id=str(evaluator_id),
-        evaluated_user_id=str(evaluated_user_id),
-        category=category
-    ).count()
-
-    if existing_ratings >= 5:
-        raise HTTPException(
-            status_code=400,
-            detail="Este usuário já foi avaliado com 5 notas nesta categoria."
-        )
-
-    for rating in ratings:
-        db_rating = ImageRating(
+    for rating_item in ratings:
+        # Verifica se já existe nota para o critério informado
+        existing = db.query(ImageRating).filter_by(
             evaluator_id=str(evaluator_id),
             evaluated_user_id=str(evaluated_user_id),
             category=category,
-            rating=rating
-        )
-        db.add(db_rating)
+            criteria=rating_item.criteria
+        ).first()
+
+        if existing:
+            existing.rating = rating_item.score  # Atualiza nota existente
+        else:
+            new_rating = ImageRating(
+                evaluator_id=str(evaluator_id),
+                evaluated_user_id=str(evaluated_user_id),
+                category=category,
+                rating=rating_item.score,
+                criteria=rating_item.criteria
+            )
+            db.add(new_rating)
+
     db.commit()
     return True
 
-def get_image_rating(db:Session,user_id:str,category:str):
-    image_rating = db.query(models.ImageRating).filter(models.ImageRating.evaluated_user_id == user_id and models.ImageRating.category == category).first()
-    return image_rating.rating
+def get_image_rating(db: Session, user_id: str, category: str):
+    image_rating = db.query(models.ImageRating).filter(
+        and_(
+            models.ImageRating.evaluated_user_id == user_id,
+            models.ImageRating.category == category
+        )
+    ).all()  # Pega todas as notas da categoria para o usuário
+
+    if image_rating:
+        return [
+            {"criteria": r.criteria, "rating": r.rating} for r in image_rating
+        ]
+    return False
 
 def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
-
-def overwrite_user_ratings(db: Session, evaluated_user_id: UUID, ratings: List[int], evaluator_id: UUID, category: str):
-    user_data = get_user_by_id(db=db, user_id=evaluator_id)
-    if user_data.user_type != 'A':
-        raise HTTPException(status_code=403, detail="Apenas usuário avaliador pode dar notas.")
-
-    evaluated_user = get_user_by_id(db=db, user_id=evaluated_user_id)
-    if not evaluated_user:
-        raise HTTPException(status_code=404, detail="Usuário avaliado não encontrado.")
-
-    # Apagar notas anteriores
-    db.query(ImageRating).filter_by(
-        evaluator_id=str(evaluator_id),
-        evaluated_user_id=str(evaluated_user_id),
-        category=category
-    ).delete()
-
-    # Inserir novas notas
-    for score in ratings:
-        db_rating = ImageRating(
-            evaluator_id=str(evaluator_id),
-            evaluated_user_id=str(evaluated_user_id),
-            category=category,
-            rating=score
-        )
-        db.add(db_rating)
-
-    db.commit()
-    return True

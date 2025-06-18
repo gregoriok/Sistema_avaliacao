@@ -14,12 +14,16 @@ class CategoryEnum(str, Enum):
     category_4 = "4"
 
 class getRateRequest(BaseModel):
-    user_id: str
+    user_id: UUID
     category: str
+
+class RatingItem(BaseModel):
+    criteria: str
+    score: int
 
 class RateRequest(BaseModel):
     evaluated_user_id: UUID
-    rating: List[int]
+    ratings: List[RatingItem]
     category: str
     evaluator_id: UUID
 

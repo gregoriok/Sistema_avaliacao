@@ -40,6 +40,7 @@ class ImageRating(Base):
     evaluated_user_id = sa.Column(sa.String, nullable=False)
     category = sa.Column(sa.String(1), nullable=False)
     rating = sa.Column(sa.Integer, nullable=False)
+    criteria = Column(String, nullable=False)
 
 class Token(Base):
     __tablename__ = "tokens"
