@@ -7,15 +7,23 @@ from enum import Enum
 from typing import List
 # Pydantic schemas for validation
 
+
+#categoria 1 estudante graduacao
+#categoria 2 estudante pos
+#categoria 3 Graduado
+#categoria 4 avaliador
+#categoria 5 admin
 class CategoryEnum(str, Enum):
     category_1 = "1"
     category_2 = "2"
     category_3 = "3"
     category_4 = "4"
+    category_5 = "5"
 
 class getRateRequest(BaseModel):
     user_id: UUID
     category: str
+    evaluator_id: UUID
 
 class RatingItem(BaseModel):
     criteria: str
@@ -34,6 +42,8 @@ class UserCreate(BaseModel):
     user_type: str
     password: str
     category: CategoryEnum
+    cep: str
+    complete_adress: str
 
     class Config:
         orm_mode = True
@@ -92,3 +102,7 @@ class TokenUpdate(BaseModel):
 class SendEmailRequest(BaseModel):
     email: str
     name: str
+    document: str
+
+class UserPasswordUpdate(BaseModel):
+    password: str

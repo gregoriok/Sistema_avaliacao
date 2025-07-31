@@ -19,6 +19,8 @@ class User(Base):
     password = Column(String)
     category = Column(String, index=True)
     images = relationship("Image", back_populates="user")
+    cep = Column(String)
+    complete_adress = Column(String)
 
 # Images Table
 class Image(Base):

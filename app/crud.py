@@ -9,7 +9,9 @@ from fastapi import UploadFile
 import logging
 from .models import ImageRating
 from app.schemas import RatingItem
-from sqlalchemy import and_
+from sqlalchemy import and_, cast, or_
+from sqlalchemy.sql import func
+from sqlalchemy.dialects.postgresql import UUID
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
@@ -29,7 +31,9 @@ def create_user(db: Session, user: schemas.UserCreate, file_content: bytes = Non
                           user_type=user.user_type,
                           file=file_content,
                           password=hashed_password,
-                          category=user.category)
+                          category=user.category,
+                          cep=user.cep,
+                          complete_adress=user.complete_adress)
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
@@ -41,23 +45,11 @@ def get_user_by_id(db: Session, user_id: UUID):
 def get_users(db: Session, skip: int = 0, limit: int = 10) -> List[models.User]:
     return db.query(models.User).offset(skip).limit(limit).all()
 
-def update_user(db: Session, user_id: UUID, user: schemas.UserUpdate):
-    logger.debug(f"Received user update request: {user}")
+def update_password(db: Session, user_id: UUID, password: str):
     db_user = db.query(models.User).filter(models.User.id == user_id).first()
     if db_user:
-        if 'name' in user:
-            db_user.name = user['name']
-        if 'document' in user:
-            db_user.document = user['document']
-        if 'email' in user:
-            db_user.email = user['email']
-        if 'user_type' in user:
-            db_user.user_type = user['user_type']
-        if 'file' in user:
-            db_user.file = user['file']
-        if 'password' in user:
-            hashed_password = hash_password(user['password'])
-            db_user.password = hashed_password
+        hashed_password = hash_password(password)
+        db_user.password = hashed_password
         db.commit()
         db.refresh(db_user)
     return db_user
@@ -78,7 +70,7 @@ def authenticate_user(db: Session, email: str, password: str):
 
 def generate_token_for_user(db: Session, user_id: UUID):
     token_data = {"sub": str(user_id)}
-    token = create_access_token(token_data, expires_delta=timedelta(days=5))
+    token = create_access_token(token_data)
 
     db_token = models.Token(token=token, expiration_date=datetime.utcnow() + timedelta(days=5))
     db.add(db_token)
@@ -181,11 +173,12 @@ def set_user_rating(
     db.commit()
     return True
 
-def get_image_rating(db: Session, user_id: str, category: str):
+def get_image_rating(db: Session, user_id: str, category: str, evaluator_id: str):
     image_rating = db.query(models.ImageRating).filter(
         and_(
             models.ImageRating.evaluated_user_id == user_id,
-            models.ImageRating.category == category
+            models.ImageRating.category == category,
+            models.ImageRating.evaluator_id == evaluator_id
         )
     ).all()  # Pega todas as notas da categoria para o usuário
 
@@ -195,5 +188,51 @@ def get_image_rating(db: Session, user_id: str, category: str):
         ]
     return False
 
-def get_user_by_email(db: Session, email: str):
-    return db.query(models.User).filter(models.User.email == email).first()
+def get_user_by_email_or_document(db: Session, email: str, document: str):
+    query = db.query(models.User)
+    conditions = []
+    if email:
+        conditions.append(models.User.email == email)
+    if document:
+        conditions.append(models.User.document == document)
+    if conditions:
+        return query.filter(or_(*conditions)).first()
+    else:
+        return None
+
+def get_user_media(db: Session):
+    medias = (
+        db.query(
+            models.ImageRating.evaluated_user_id.label("user_id"),
+            models.User.name,
+            models.User.category.label("user_category"),
+            models.ImageRating.category,
+            func.avg(models.ImageRating.rating).label("media")
+        )
+        .join(models.User, cast(models.ImageRating.evaluated_user_id, UUID) == models.User.id)
+        .group_by(
+            models.ImageRating.evaluated_user_id,
+            models.ImageRating.category,
+            models.User.name,
+            models.User.category
+        )
+        .all()
+    )
+
+    usuarios = {}
+    for row in medias:
+        uid = str(row.user_id)
+        if uid not in usuarios:
+            usuarios[uid] = {
+                "user_id": uid,
+                "name": row.name,
+                "user_category": row.user_category,
+                "categoria_a_media": None,
+                "categoria_b_media": None
+            }
+        if row.category == "A":
+            usuarios[uid]["categoria_a_media"] = round(row.media, 2)
+        elif row.category == "B":
+            usuarios[uid]["categoria_b_media"] = round(row.media, 2)
+
+    return list(usuarios.values())

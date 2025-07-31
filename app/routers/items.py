@@ -10,6 +10,13 @@ from app.utils import  *
 from app.schemas import RateRequest,getRateRequest,SendEmailRequest
 import secrets
 import string
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from dotenv import load_dotenv
+import os
+from app.routers.users import get_current_user
+load_dotenv()
 router = APIRouter()
 
 @router.post("/api/images/upload/")
@@ -18,7 +25,8 @@ async def upload_image(
     user_id: UUID = Form(...),
     subcategory: str = Form(...),
     description: str = Form(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
 ):
     if image.content_type not in ["image/jpeg", "image/jpg"]:
         raise HTTPException(status_code=400, detail="O arquivo deve ser uma imagem JPG ou JPEG")
@@ -64,31 +72,9 @@ async def get_image_by_id(image_id: UUID, db: Session = Depends(get_db)):
     return StreamingResponse(image_stream, media_type="image/jpeg")
 
 
-@router.delete("/api/images/{image_id}", response_model=dict)
-def delete_image(image_id: UUID, db: Session = Depends(get_db)):
-    db_image = crud.delete_image(db=db, image_id=image_id)
-
-    if db_image is None:
-        raise HTTPException(status_code=404, detail="Imagem não encontrada")
-
-    return {"sucess": True, "message": "Imagem deletada com sucesso"}
-
-@router.put("/api/images/{image_id}")
-async def update_image(
-        image_id: UUID,
-        new_image: Optional[UploadFile] = File(None),
-        description: Optional[str] = Form(None),
-        db: Session = Depends(get_db)
-):
-    updated_image = await crud.update_image(db=db, image_id=image_id, new_image=new_image, description=description)
-
-    if not updated_image:
-        raise HTTPException(status_code=404, detail="Image not found")
-
-    return {"sucess": True, "message": "Imagem atualizada com sucesso"}
-
 @router.get("/api/user/images/{user_id}")
-async def get_image_by_user(user_id: UUID, subcategory: Optional[str] = None, db: Session = Depends(get_db)):
+async def get_image_by_user(user_id: UUID, subcategory: Optional[str] = None, db: Session = Depends(get_db),
+                            current_user: models.User = Depends(get_current_user)):
     db_images = crud.get_images_by_user(db=db, user_id=user_id, subcategory=subcategory)
 
     if not db_images:
@@ -100,14 +86,14 @@ async def get_image_by_user(user_id: UUID, subcategory: Optional[str] = None, db
     return {"sucess": True,
             "images": image_ids}
 
-@router.get("/api/images/{image_id}/details", response_model=dict)
-async def get_image_details(image_id: UUID, db: Session = Depends(get_db)):
+@router.get("/api/images/{image_id}/details", response_model=dict,)
+async def get_image_details(image_id: UUID, db: Session = Depends(get_db),
+                            current_user: models.User = Depends(get_current_user)):
     db_image = crud.get_image_by_id(db=db, image_id=image_id)
 
     if db_image is None:
         raise HTTPException(status_code=404, detail="Imagem não encontrada")
 
-    print(db_image.subcategory)
     return {
         "image_id": str(db_image.id),
         "description": db_image.description,
@@ -115,8 +101,9 @@ async def get_image_details(image_id: UUID, db: Session = Depends(get_db)):
     }
 
 @router.post("/api/users/rate/")
-async def rate_user(rate_request: RateRequest, db: Session = Depends(get_db)):
-
+async def rate_user(rate_request: RateRequest,
+                    db: Session = Depends(get_db),
+                    current_user: models.User = Depends(get_current_user)):
     if len(rate_request.ratings) != 5:
         raise HTTPException(
             status_code=400,
@@ -136,6 +123,13 @@ async def rate_user(rate_request: RateRequest, db: Session = Depends(get_db)):
             detail="O avaliador nao pode se auto avaliar."
         )
 
+    evaluator = crud.get_user_by_id(rate_request.evaluator_id)
+    if evaluator.user_type != "A":
+        raise HTTPException(
+            status_code=400,
+            detail="O usuario nao é avaliador."
+        )
+
     try:
         crud.set_user_rating(
             db=db,
@@ -151,23 +145,27 @@ async def rate_user(rate_request: RateRequest, db: Session = Depends(get_db)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Erro ao atribuir as notas."
         )
-
     return {"message": "Notas atribuídas com sucesso."}
 
 @router.post("/api/images/rate/")
-def get_image_rate_by_category(rate_request: getRateRequest, db: Session = Depends(get_db)):
-    ratings = crud.get_image_rating(db=db, user_id=str(rate_request.user_id), category=rate_request.category)
+def get_image_rate_by_category(rate_request: getRateRequest, db: Session = Depends(get_db),
+                               current_user: models.User = Depends(get_current_user)):
+    ratings = crud.get_image_rating(db=db, user_id=str(rate_request.user_id), category=rate_request.category, evaluator_id=str(rate_request.evaluator_id))
     if ratings:
         return {"ratings": ratings}
     raise HTTPException(status_code=400, detail="Imagens não encontradas para este usuário nesta categoria")
 
 @router.post("/api/invite")
-def send_mail(EmailRequest: SendEmailRequest, db: Session = Depends(get_db)):
+def send_mail_api(EmailRequest: SendEmailRequest,
+              db: Session = Depends(get_db),
+              current_user: models.User = Depends(get_current_user)):
     user_email = EmailRequest.email
     user_name = EmailRequest.name
-    user = crud.get_user_by_email(db, email=user_email)
+    user_document = EmailRequest.document
+    user = crud.get_user_by_email_or_document(db, email=user_email,document=user_document)
+
     if user:
-        raise HTTPException(status_code=400, detail="Usuário já cadastrado.")
+        raise HTTPException(status_code=400, detail="Usuário já cadastrado com este e-mail ou documento")
 
     password = generate_random_password()
 
@@ -176,25 +174,26 @@ def send_mail(EmailRequest: SendEmailRequest, db: Session = Depends(get_db)):
         email=user_email,
         password=password,
         user_type='A',
-        document='',
+        document=user_document,
         category='4'
     )
-
-    crud.create_user(db=db, user=user_data)
+    try:
+        crud.create_user(db=db, user=user_data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Erro ao cadastrar usuario")
 
     email_content = f"Olá, você foi cadastrado como avaliador, acesse usando seu e-mail e sua nova senha : {password}"
-    send_email(user_email, "Novo cadastro como Avaliador", email_content)
-
-    return {"message": "Convite enviado com sucesso!"}
-
+    sended_email = send_email(user_email, "Novo cadastro como Avaliador no concurso do LAGIM", email_content)
+    if sended_email:
+        return {"message": "Convite enviado com sucesso!"}
+    else:
+        user = crud.get_user_by_email(db=db, email=user_email)
+        crud.delete_user(user.id)
+        raise HTTPException(status_code=500, detail="Erro ao enviar email")
 
 def send_email(to_email: str, subject: str, content: str):
-    import smtplib
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
-
-    from_email = "gregoriosteinke@gmail.com"
-    password = "zbgg djan hziq gszi"
+    from_email = os.getenv("EMAIL_GMAIL")
+    password = os.getenv("SENHA_GMAIL")
 
     msg = MIMEMultipart()
     msg["From"] = from_email
@@ -208,9 +207,14 @@ def send_email(to_email: str, subject: str, content: str):
             server.login(from_email, password)
             server.sendmail(from_email, to_email, msg.as_string())
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Erro ao enviar email: " + str(e))
+        return False
+    return True
 
 def generate_random_password(length=12):
     characters = string.ascii_letters + string.digits + string.punctuation
     password = ''.join(secrets.choice(characters) for _ in range(length))
     return password
+
+@router.get("/api/avaliacoes/media-por-usuario")
+def listar_medias_por_usuario(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    return crud.get_user_media(db)
