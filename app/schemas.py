@@ -44,6 +44,7 @@ class UserCreate(BaseModel):
     category: CategoryEnum
     cep: str
     complete_adress: str
+    Institution: str
 
     class Config:
         orm_mode = True
@@ -64,6 +65,8 @@ class UserOut(BaseModel):
     user_type: str
     category: CategoryEnum
     id: UUID
+    institution: str
+
     class Config:
         orm_mode = True
 
@@ -82,6 +85,9 @@ class ImageCreate(BaseModel):
     user_id: UUID
     subcategory: str
     description: Optional[str] = None
+    Title: str
+    Place: str
+    Equipment: str
 
 class ImageUpdate(BaseModel):
     subcategory: Optional[str] = None

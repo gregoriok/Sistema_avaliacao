@@ -25,9 +25,17 @@ async def upload_image(
     user_id: UUID = Form(...),
     subcategory: str = Form(...),
     description: str = Form(...),
+    Title: str = Form(...),
+    Place: str = Form(...),
+    Equipment: str = Form(...),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
+    user = crud.get_user_by_id(db=db, user_id=user_id)
+    ADM_TYPE = os.getenv("ADM_TYPE")
+    if user.user_type == ADM_TYPE:
+        raise HTTPException(status_code=400, detail="Usuários avaliadores não podem enviar imagens")
+
     if image.content_type not in ["image/jpeg", "image/jpg"]:
         raise HTTPException(status_code=400, detail="O arquivo deve ser uma imagem JPG ou JPEG")
 
@@ -51,7 +59,10 @@ async def upload_image(
         user_id=user_id,
         image_data=image_content,
         subcategory=subcategory,
-        description=description
+        description=description,
+        Title=Title,
+        Place=Place,
+        Equipment=Equipment
     )
     db_image = crud.upload_image(db=db, image=image_data)
     if not db_image:

@@ -21,6 +21,7 @@ class User(Base):
     images = relationship("Image", back_populates="user")
     cep = Column(String)
     complete_adress = Column(String)
+    institution = Column(String)
 
 # Images Table
 class Image(Base):
@@ -30,7 +31,10 @@ class Image(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     image_data = Column(LargeBinary)
     subcategory = Column(String, index=True)
-    description = Column(String(500))
+    description = Column(String(1500))
+    Title = Column(String(50)),
+    Place = Column(String(500)),
+    Equipment = Column(String(100))
 
     user = relationship("User", back_populates="images")
 
