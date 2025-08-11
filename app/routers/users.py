@@ -39,7 +39,7 @@ async def create_user(name: str = Form(...),
     password: str = Form(...),
     category: str = Form(...),
     cep: str = Form(...),
-    complete_adress: str = Form(...),
+    complete_address: str = Form(...),
     institution: str = Form(...),
     file: UploadFile = File(...),
     db: Session = Depends(get_db)):
@@ -57,7 +57,7 @@ async def create_user(name: str = Form(...),
         user_type=user_type,
         category=category,
         cep=cep,
-        complete_adress=complete_adress,
+        complete_address=complete_address,
         institution=institution
     )
     db_user = crud.create_user(db=db, user=user_data, file_content=file_content)

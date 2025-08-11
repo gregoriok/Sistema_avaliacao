@@ -43,7 +43,7 @@ class UserCreate(BaseModel):
     password: str
     category: CategoryEnum
     cep: str
-    complete_adress: str
+    complete_address: str
     institution: str
 
     class Config:

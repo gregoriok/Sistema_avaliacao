@@ -238,5 +238,13 @@ def generate_random_password(length=12):
     return password
 
 @router.get("/api/avaliacoes/media-por-usuario")
-def listar_medias_por_usuario(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    return crud.get_user_media(db)
+def listar_medias_por_usuario(db: Session = Depends(get_db)):
+    dados_medias = crud.get_user_media(db)
+    if not dados_medias:
+        raise HTTPException(status_code=404, detail="Nenhum dado de avaliação encontrado.")
+
+    pdf_buffer = criar_pdf_medias(dados_medias)
+
+    headers = {'Content-Disposition': 'attachment; filename="media_usuarios_endereco.pdf"'}
+
+    return StreamingResponse(pdf_buffer, media_type='application/pdf', headers=headers)

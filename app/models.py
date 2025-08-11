@@ -20,7 +20,7 @@ class User(Base):
     category = Column(String, index=True)
     images = relationship("Image", back_populates="user")
     cep = Column(String)
-    complete_adress = Column(String)
+    complete_address = Column(String)
     institution = Column(String)
 
 # Images Table

@@ -33,7 +33,7 @@ def create_user(db: Session, user: schemas.UserCreate, file_content: bytes = Non
                           password=hashed_password,
                           category=user.category,
                           cep=user.cep,
-                          complete_adress=user.complete_adress,
+                          complete_address=user.complete_address,
                           institution=user.institution)
     db.add(db_user)
     db.commit()
@@ -211,15 +211,20 @@ def get_user_media(db: Session):
             models.ImageRating.evaluated_user_id.label("user_id"),
             models.User.name,
             models.User.category.label("user_category"),
+            models.User.complete_address,
+            models.User.cep,
             models.ImageRating.category,
             func.avg(models.ImageRating.rating).label("media")
         )
+        # O join com User permanece
         .join(models.User, cast(models.ImageRating.evaluated_user_id, UUID) == models.User.id)
         .group_by(
             models.ImageRating.evaluated_user_id,
             models.ImageRating.category,
             models.User.name,
-            models.User.category
+            models.User.category,
+            models.User.complete_address,
+            models.User.cep
         )
         .all()
     )
@@ -232,9 +237,12 @@ def get_user_media(db: Session):
                 "user_id": uid,
                 "name": row.name,
                 "user_category": row.user_category,
+                # --- ADICIONAR O ENDEREÇO AO DICIONÁRIO ---
+                "complete_address": row.complete_address + ' cep = ' + row.cep or "Não informado",
                 "categoria_a_media": None,
                 "categoria_b_media": None
             }
+
         if row.category == "A":
             usuarios[uid]["categoria_a_media"] = round(row.media, 2)
         elif row.category == "B":
