@@ -25,9 +25,9 @@ async def upload_image(
     user_id: UUID = Form(...),
     subcategory: str = Form(...),
     description: str = Form(...),
-    Title: str = Form(...),
-    Place: str = Form(...),
-    Equipment: str = Form(...),
+    title: str = Form(...),
+    place: str = Form(...),
+    equipment: str = Form(...),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
@@ -54,15 +54,16 @@ async def upload_image(
 
     image.file.seek(0)
     image_content = await image.read()
-
+    print(title)
+    print(place)
     image_data = models.Image(
         user_id=user_id,
         image_data=image_content,
         subcategory=subcategory,
         description=description,
-        Title=Title,
-        Place=Place,
-        Equipment=Equipment
+        title=title,
+        place=place,
+        equipment=equipment
     )
     db_image = crud.upload_image(db=db, image=image_data)
     if not db_image:
@@ -101,7 +102,7 @@ async def get_image_by_user(user_id: UUID, subcategory: Optional[str] = None, db
 async def get_image_details(image_id: UUID, db: Session = Depends(get_db),
                             current_user: models.User = Depends(get_current_user)):
     db_image = crud.get_image_by_id(db=db, image_id=image_id)
-
+    print(db_image)
     if db_image is None:
         raise HTTPException(status_code=404, detail="Imagem não encontrada")
 
@@ -109,6 +110,9 @@ async def get_image_details(image_id: UUID, db: Session = Depends(get_db),
         "image_id": str(db_image.id),
         "description": db_image.description,
         "subcategory": db_image.subcategory,
+        "equipment": db_image.equipment,
+        "place": db_image.place,
+        "title": db_image.title
     }
 
 @router.post("/api/users/rate/")
@@ -134,7 +138,7 @@ async def rate_user(rate_request: RateRequest,
             detail="O avaliador nao pode se auto avaliar."
         )
 
-    evaluator = crud.get_user_by_id(rate_request.evaluator_id)
+    evaluator = crud.get_user_by_id(db=db, user_id=rate_request.evaluator_id)
     if evaluator.user_type != "A":
         raise HTTPException(
             status_code=400,
@@ -179,6 +183,9 @@ def send_mail_api(EmailRequest: SendEmailRequest,
         raise HTTPException(status_code=400, detail="Usuário já cadastrado com este e-mail ou documento")
 
     password = generate_random_password()
+    fake_adress = 'endereço dos avaliadores'
+    fake_cep ='00000000'
+    fake_Institution = 'Avaliador'
 
     user_data = schemas.UserCreate(
         name=user_name,
@@ -186,11 +193,15 @@ def send_mail_api(EmailRequest: SendEmailRequest,
         password=password,
         user_type='A',
         document=user_document,
-        category='4'
+        category='4',
+        institution='Avaliador',
+        complete_adress='endereço dos avaliadores',
+        cep='00000000'
     )
     try:
         crud.create_user(db=db, user=user_data)
     except Exception as e:
+        print(e)
         raise HTTPException(status_code=500, detail="Erro ao cadastrar usuario")
 
     email_content = f"Olá, você foi cadastrado como avaliador, acesse usando seu e-mail e sua nova senha : {password}"

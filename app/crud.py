@@ -34,7 +34,7 @@ def create_user(db: Session, user: schemas.UserCreate, file_content: bytes = Non
                           category=user.category,
                           cep=user.cep,
                           complete_adress=user.complete_adress,
-                          Institution=user.Institution)
+                          institution=user.institution)
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
@@ -88,10 +88,11 @@ def upload_image(db: Session, image: schemas.ImageCreate):
         image_data=image.image_data,
         subcategory=image.subcategory,
         description=image.description,
-        Title=image.Title,
-        Place=image.Place,
-        Equipment=image.Equipment
+        title=image.title,
+        place=image.place,
+        equipment=image.equipment
     )
+    print(db_image.__dict__)
     db.add(db_image)
     db.commit()
     db.refresh(db_image)

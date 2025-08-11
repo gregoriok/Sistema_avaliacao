@@ -32,9 +32,9 @@ class Image(Base):
     image_data = Column(LargeBinary)
     subcategory = Column(String, index=True)
     description = Column(String(1500))
-    Title = Column(String(50)),
-    Place = Column(String(500)),
-    Equipment = Column(String(100))
+    title = Column(String(50))
+    place = Column(String(500))
+    equipment = Column(String(100))
 
     user = relationship("User", back_populates="images")
 
