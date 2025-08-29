@@ -10,8 +10,6 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Table, TableStyle, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 
-from database import get_db
-
 # Configurando o contexto do hash
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 SECRET_KEY = "CHAVESECRETEAGERADORDECHAVES"

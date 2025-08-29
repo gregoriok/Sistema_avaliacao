@@ -195,7 +195,7 @@ def send_mail_api(EmailRequest: SendEmailRequest,
         document=user_document,
         category='4',
         institution='Avaliador',
-        complete_adress='endereço dos avaliadores',
+        complete_address='Avaliador',
         cep='00000000'
     )
     try:
@@ -209,8 +209,8 @@ def send_mail_api(EmailRequest: SendEmailRequest,
     if sended_email:
         return {"message": "Convite enviado com sucesso!"}
     else:
-        user = crud.get_user_by_email(db=db, email=user_email)
-        crud.delete_user(user.id)
+        user = crud.get_user_by_email_or_document(db=db, email=user_email,document=user_document)
+        crud.delete_user(db=db, user_id=user.id)
         raise HTTPException(status_code=500, detail="Erro ao enviar email")
 
 def send_email(to_email: str, subject: str, content: str):
@@ -222,13 +222,14 @@ def send_email(to_email: str, subject: str, content: str):
     msg["To"] = to_email
     msg["Subject"] = subject
     msg.attach(MIMEText(content, "plain"))
-
+    print(password)
     try:
         with smtplib.SMTP("smtp.gmail.com", 587) as server:
             server.starttls()
             server.login(from_email, password)
             server.sendmail(from_email, to_email, msg.as_string())
     except Exception as e:
+        print(e)
         return False
     return True
 
